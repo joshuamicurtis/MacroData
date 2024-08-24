@@ -38,19 +38,38 @@ def get_BLS_data(seriesIDs, startyear, endyear):
     
     return message, json_data 
     
-
-def create_data_dataframe(json_data):
-    df = pd.DataFrame(json_data['Results']['series'][0]['data'])
-    df['month'] = df['year'] + df['period'].str.replace('M','')
-    df['month'] = pd.to_datetime(df['month'],format='%Y%m')
-    df['month'] = df['month'].dt.date.apply(lambda x: x.strftime('%Y-%m'))
-    df = df.sort_values(by=['month'])
-    df['pct_changeMoM'] = df['value'].astype(float).pct_change() * 100
-    df['pct_changeYoY'] = df['value'].astype(float).pct_change(12) * 100
-    df['pct_changeMoM_Ann'] = ((df['value'].astype(float).pct_change() + 1) ** 12 - 1) * 100
-    df = df.drop(columns=['year', 'period','periodName', 'latest','footnotes'])
+def create_year_increments(startyear, endyear):
+    """
+    Create start and endyear increments of 20 years or 
+    """
+    if endyear - startyear < 20:
+        return startyear, endyear
+    else:
+        i = startyear
+        increments = []
+        while i <= endyear: 
+            start_end_array = []
+            start_end_array.append(i)
+            if i + 19 > endyear:
+                start_end_array.append(endyear)
+            else:
+                start_end_array.append(i + 19)
+            increments.append(start_end_array)
+            i += 20
     
-    return df
+    return increments
+    
+def format_data_dataframe(df_data):
+    df_data['month'] = df_data['year'] + df_data['period'].str.replace('M','')
+    df_data['month'] = pd.to_datetime(df_data['month'],format='%Y%m')
+    df_data['month'] = df_data['month'].dt.date.apply(lambda x: x.strftime('%Y-%m'))
+    df_data = df_data.sort_values(by=['month'])
+    df_data['pct_changeMoM'] = df_data['value'].astype(float).pct_change() * 100
+    df_data['pct_changeYoY'] = df_data['value'].astype(float).pct_change(12) * 100
+    df_data['pct_changeMoM_Ann'] = ((df_data['value'].astype(float).pct_change() + 1) ** 12 - 1) * 100
+    df_data = df_data.drop(columns=['year', 'period','periodName', 'latest','footnotes'])
+    
+    return df_data
     
 
 def create_dict_dataframe(json_data):
@@ -68,3 +87,22 @@ def create_dict_dataframe(json_data):
     df_dict = df_dict.drop(columns=['series_id'])
     
     return df_dict
+    
+def create_dataframes(seriesID, startyear, endyear):
+    increments = create_year_increments(startyear,endyear)
+    i = 0
+    df_data = pd.DataFrame() 
+    df_dict = pd.DataFrame() 
+    while i < len(increments): 
+        message, json_data = get_BLS_data([seriesID], increments[i][0], increments[i][1])
+        if not df_data.empty:
+            df_data = pd.concat([df_data, pd.DataFrame(json_data['Results']['series'][0]['data'])])
+        if df_data.empty:
+            df_data = pd.DataFrame(json_data['Results']['series'][0]['data'])
+        if df_dict.empty: 
+            df_dict = create_dict_dataframe(json_data)
+        i += 1
+    
+    df_data = format_data_dataframe(df_data)
+
+    return df_data, df_dict  
